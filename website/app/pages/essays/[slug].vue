@@ -426,9 +426,17 @@ useHead(() => {
     headConfig.meta.push({ name: 'robots', content: 'noindex' }); 
   } else if (currentEssay?.title) {
     pageTitle = currentEssay.title;
-    const description = `Read the AI-generated essay titled "${pageTitle}". ${currentEssay.author?.githubHandle ? `Prompted by ${currentEssay.author.githubHandle}.` : ''} An experiment on wwpgw.com.`;
+    
+    // Get the first 100 characters of the essay content for the description
+    const contentPreview = currentEssay.content 
+      ? currentEssay.content.substring(0, 100).replace(/\n/g, ' ').trim() + '...'
+      : '';
+    
+    const description = `${contentPreview}`;
     
     headConfig.meta.push({ name: 'description', content: description });
+    
+    // Open Graph tags
     headConfig.meta.push({ property: 'og:title', content: pageTitle });
     headConfig.meta.push({ property: 'og:description', content: description });
     headConfig.meta.push({ property: 'og:type', content: 'article' });
@@ -442,7 +450,10 @@ useHead(() => {
       headConfig.meta.push({ property: 'article:published_time', content: new Date(currentEssay.createdAt).toISOString() });
     }
     
+    // Twitter Card tags
     headConfig.meta.push({ name: 'twitter:card', content: 'summary_large_image' });
+    headConfig.meta.push({ name: 'twitter:site', content: '@ohwellnotreally' });
+    headConfig.meta.push({ name: 'twitter:creator', content: currentEssay.author?.githubHandle ? `@${currentEssay.author.githubHandle}` : '@ohwellnotreally' });
     headConfig.meta.push({ name: 'twitter:title', content: pageTitle });
     headConfig.meta.push({ name: 'twitter:description', content: description });
     headConfig.meta.push({ name: 'twitter:image', content: `${siteUrl}/social-image.png` });
