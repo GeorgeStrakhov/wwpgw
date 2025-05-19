@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid' // For generating unique IDs
 import { eq, count } from 'drizzle-orm' // Added import for eq and count
 import slugify from 'slugify'
 
-const MAX_TOTAL_ESSAYS = 3
+const MAX_TOTAL_ESSAYS = 1000
 
 // Helper function to generate a slug
 const generateSlug = (title: string): string => {
