@@ -2,7 +2,9 @@
 
 _What would Paul Graham write? An experiment in personality extension_
 
-![WWPGW Icon](https://raw.githubusercontent.com/GeorgeStrakhov/wwpgw/main/website/public/favicon-192x192.png)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/GeorgeStrakhov/wwpgw/main/website/public/android-chrome-192x192.png" alt="WWPGW Icon">
+</div>
 
 This is an experiment in synthetic personality extension.
 
