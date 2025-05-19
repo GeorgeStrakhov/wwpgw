@@ -2,6 +2,8 @@
 
 _What would Paul Graham write? An experiment in personality extension_
 
+![WWPGW Icon](https://raw.githubusercontent.com/GeorgeStrakhov/wwpgw/main/website/public/favicon-192x192.png)
+
 This is an experiment in synthetic personality extension.
 
 The research question is simple:
@@ -45,21 +47,20 @@ TODO! Add PG's tweets to the dataset as well potentially... but not sure.
 2. `writer` implemented as a standalone cloudflare worker with queues, using cloudflare autorag and vectorize and then openrouter for access to latest and best LLMs. Stateless. generates the new essay and calls as webhook when done with the result.
 
 3. `website` implemented as a nuxt app, deployed to nuxthub (based on https://github.com/atinux/atidone)
-Website displays all the synthetically written essays and allows users to generate more (after using social login for verification to prevent abuse. Each user can generate up to 3 essays - to prevent AI bill creep). Users can also rate the essays and comment on them.
+Website displays all the synthetically written essays and allows users to generate more (after using social login for verification to prevent abuse. Users can also rate the essays and comment on them.
 
 
 ### Generation pipeline:
-    - website: get the title 
-    - website: check for profanities etc. with an llm. Also check we are not generating an essay that real PG has already written.
-    - website: check there is no essay with the same exact title. If yes - return that.
-    - writer: add all the other essays as references
-    - writer: use RAG to get the most relevant previous essays (to focus the generation llm on the right things)
-    - writer: send to LLM to generate 
-    - writer: send generated essay to webhook
-    - website: save to DB and display to the user
 
+- website: get the title 
+- website: check for profanities etc. with an llm. Also check we are not generating an essay that real PG has already written.
+- website: check there is no essay with the same exact title. If yes - return that.
+- writer: add all the other essays as references
+- writer: use RAG to get the most relevant previous essays (to focus the generation llm on the right things)
+- writer: send to LLM to generate 
+- writer: send generated essay to webhook
+- website: save to DB and display to the user
 
-- - - 
 
 ## How to use if you clone
 
