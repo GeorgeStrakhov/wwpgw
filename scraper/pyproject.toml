@@ -1,0 +1,13 @@
+[project]
+name = "pg-scraper"
+version = "0.1.0"
+description = "Scraper for Paul Graham's essays"
+requires-python = ">=3.9"
+dependencies = [
+    "beautifulsoup4>=4.13.4",
+    "groq>=0.24.0",
+    "openai>=1.78.0",
+    "python-dotenv>=1.1.0",
+    "requests>=2.32.3",
+    "tiktoken>=0.9.0",
+]
