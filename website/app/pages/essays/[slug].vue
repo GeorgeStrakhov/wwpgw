@@ -50,6 +50,17 @@ const comments = ref<HierarchicalComment[]>([])
 const newCommentText = ref('')
 const parsedContent = ref<any>(null)
 
+// Pre-render the essay content so the full text is included in the initial HTML for SEO purposes.
+// Run this during both server-side rendering and on the client before hydration to keep markup in sync.
+if (essay.value?.status === 'completed' && essay.value.content && !parsedContent.value) {
+  try {
+    parsedContent.value = await parseMarkdown(essay.value.content)
+  } catch (e) {
+    console.error('Error parsing markdown at initial render:', e)
+    parsedContent.value = null
+  }
+}
+
 const isLoading = ref(initialPending.value);
 const isLoadingRatings = ref(true)
 const isLoadingComments = ref(true)
