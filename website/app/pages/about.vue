@@ -9,7 +9,7 @@
 
     <section class="mb-8">
       <h2 class="text-2xl font-semibold mb-4">Why Paul Graham?</h2>
-      <p class="mb-4">Instead of using an average person with low noise-to-signal sources like emails, this experiment works with a best-case scenario:</p>
+      <p class="mb-4">Instead of using an average person with low signal-to-noise ratio sources like emails, this experiment works with a best-case scenario:</p>
       <ul class="list-disc ml-6 mb-4">
         <li>Someone who has been thinking and documenting their thought process for an extended period</li>
         <li>Someone with a developed and distinct thinking and writing style</li>
