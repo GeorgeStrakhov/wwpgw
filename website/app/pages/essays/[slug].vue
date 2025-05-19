@@ -425,7 +425,7 @@ useHead(() => {
     pageTitle = `Essay Not Found: ${potentialTitleFromSlug.value || unslugify(currentSlug)}`;
     headConfig.meta.push({ name: 'robots', content: 'noindex' }); 
   } else if (currentEssay?.title) {
-    pageTitle = currentEssay.title;
+    pageTitle = 'What Would Paul Graham Write? ' + currentEssay.title;
     
     // Get the first 100 characters of the essay content for the description
     const contentPreview = currentEssay.content 
