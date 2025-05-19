@@ -11,7 +11,38 @@ const route = useRoute()
 const router = useRouter()
 const slug = computed(() => route.params.slug as string)
 
-const essay = ref<Essay | null>(null)
+const unslugify = (slugString: string): string => {
+  if (!slugString) return ''
+  return slugString
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+const { 
+  data: initialEssayData, 
+  pending: initialPending,
+  error: initialErrorData,
+  refresh: refreshInitialEssay 
+} = await useAsyncData(
+  `essay-${slug.value}`, 
+  async () => {
+    if (!slug.value) return null;
+    try {
+      const data = await $fetch<Essay>(`/api/essays/${slug.value}`);
+      return data;
+    } catch (err: any) {
+      console.error(`useAsyncData: Error fetching essay ${slug.value}:`, err.data?.statusMessage || err.message);
+      throw createError({ statusCode: err.statusCode || 500, statusMessage: err.data?.statusMessage || 'Failed to fetch initial essay data', fatal: false });
+    }
+  },
+  { 
+    watch: [slug], 
+    immediate: true 
+  } 
+);
+
+const essay = ref<Essay | null>(initialEssayData.value ?? null);
 const ratingStats = ref<EssayRatingStats | null>(null)
 const userRating = ref<number | null>(null)
 const hoverRating = ref<number | null>(null)
@@ -19,7 +50,7 @@ const comments = ref<HierarchicalComment[]>([])
 const newCommentText = ref('')
 const parsedContent = ref<any>(null)
 
-const isLoading = ref(true)
+const isLoading = ref(initialPending.value);
 const isLoadingRatings = ref(true)
 const isLoadingComments = ref(true)
 const isPostingComment = ref(false)
@@ -34,62 +65,182 @@ const pollingErrorMsg = ref<string | null>(null)
 
 let pollInterval: NodeJS.Timeout | null = null
 
-const unslugify = (slug: string): string => {
-  if (!slug) return ''
-  return slug
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
+if (initialErrorData.value && !initialEssayData.value) {
+  const error = initialErrorData.value as any;
+  if (error.statusCode === 404) {
+    is404NotFound.value = true;
+    potentialTitleFromSlug.value = unslugify(slug.value);
+    errorMsg.value = `The essay "${potentialTitleFromSlug.value}" has not been created yet.`;
+  } else {
+    errorMsg.value = error.statusMessage || error.message || 'Failed to load essay details initially.';
+  }
+  isLoading.value = false;
 }
 
-const fetchEssayAndRelatedData = async () => {
-  if (!slug.value) return
-  isLoading.value = true
-  is404NotFound.value = false
-  isLoadingRatings.value = true
-  isLoadingComments.value = true
-  errorMsg.value = null
-  ratingErrorMsg.value = null
-  commentErrorMsg.value = null
+watch(initialEssayData, (newData) => {
+  essay.value = newData ?? null;
+  if (newData) {
+    is404NotFound.value = false;
+    errorMsg.value = null;
+    isLoading.value = false;
 
-  try {
-    const essayData = await $fetch<Essay>(`/api/essays/${slug.value}`)
-    essay.value = essayData
-
-    if (essayData.status === 'completed' && essayData.content) {
-      parsedContent.value = await parseMarkdown(essayData.content)
+    if (newData.status === 'completed' && newData.content) {
+      parseMarkdown(newData.content)
+        .then(pc => parsedContent.value = pc)
+        .catch(e => {
+          console.error("Error parsing markdown on initialEssayData watch:", e);
+          parsedContent.value = null;
+        });
+    } else {
+      parsedContent.value = null;
     }
 
-    if (essayData.status === 'pending' || essayData.status === 'generating') {
-      if (!pollInterval) startPolling()
+    if (newData.status === 'pending' || newData.status === 'generating') {
+      if (!pollInterval) startPolling();
     } else {
-      stopPolling()
-      if (essayData.id) {
-          await fetchRatings(essayData.id)
-          if (essayData.status === 'completed') {
-            await fetchComments(essayData.id)
-          }
+      stopPolling();
+      if (newData.id) {
+        fetchRatings(newData.id);
+        if (newData.status === 'completed') {
+          fetchComments(newData.id);
+        }
       }
     }
-  } catch (err: any) {
-    console.error('Error fetching essay details:', err)
-    if (err.statusCode === 404) {
-      is404NotFound.value = true
-      potentialTitleFromSlug.value = unslugify(slug.value)
-      errorMsg.value = `The essay "${potentialTitleFromSlug.value}" has not been created yet.`
-    } else {
-      errorMsg.value = err.data?.statusMessage || err.message || 'Could not load the essay.'
-    }
-    essay.value = null
-    ratingStats.value = null
-    comments.value = []
-    stopPolling()
-  } finally {
-    if (essay.value?.status === 'completed' || essay.value?.status === 'failed' || errorMsg.value) {
-      isLoading.value = false
+  } else if (!initialErrorData.value) { 
+    if (slug.value) {
+        is404NotFound.value = true;
+        potentialTitleFromSlug.value = unslugify(slug.value);
+        errorMsg.value = `The essay "${potentialTitleFromSlug.value}" could not be loaded.`;
+        isLoading.value = false;
     }
   }
-}
+});
+
+watch(initialPending, (pending) => {
+  if (pending && !errorMsg.value && !is404NotFound.value) {
+    isLoading.value = true;
+  } else if (!pending) {
+    if (!essay.value && !errorMsg.value && !is404NotFound.value) {
+    }
+  }
+});
+
+watch(initialErrorData, (newErrorValue) => {
+    if (newErrorValue && !essay.value) {
+        const error = newErrorValue as any;
+        if (error.statusCode === 404) {
+            is404NotFound.value = true;
+            potentialTitleFromSlug.value = unslugify(slug.value);
+            errorMsg.value = `The essay "${potentialTitleFromSlug.value}" has not been created yet. (from error watcher)`;
+        } else {
+            errorMsg.value = error.statusMessage || error.message || 'Failed to load essay data (from error watcher).';
+            is404NotFound.value = false;
+        }
+        essay.value = null;
+        parsedContent.value = null;
+        isLoading.value = false;
+        stopPolling();
+    } else if (!newErrorValue && errorMsg.value && !is404NotFound.value) {
+    }
+});
+
+const fetchEssayAndRelatedData = async () => {
+  if (!slug.value) return;
+
+  if (essay.value && essay.value.status !== 'pending' && essay.value.status !== 'generating' && !initialErrorData.value) {
+    if (essay.value.status === 'completed' || essay.value.status === 'failed') {
+        isLoading.value = false;
+    }
+    
+    if (essay.value.status === 'completed' && essay.value.content && !parsedContent.value) {
+      try {
+        parsedContent.value = await parseMarkdown(essay.value.content);
+      } catch (e) {
+        console.error("Error parsing markdown in fetchEssayAndRelatedData:", e);
+        parsedContent.value = null; 
+      }
+    }
+
+    if (essay.value.id) {
+      await fetchRatings(essay.value.id);
+      if (essay.value.status === 'completed') {
+        await fetchComments(essay.value.id);
+      }
+    }
+    return; 
+  }
+
+  if (!errorMsg.value && !is404NotFound.value) {
+    isLoading.value = true;
+  }
+  
+  isLoadingRatings.value = true; 
+  isLoadingComments.value = true;
+
+  try {
+    const essayDataToProcess = (essay.value && (essay.value.status === 'pending' || essay.value.status === 'generating'))
+                      ? essay.value 
+                      : await $fetch<Essay>(`/api/essays/${slug.value}`);
+    
+    if (JSON.stringify(essay.value) !== JSON.stringify(essayDataToProcess)) {
+        essay.value = essayDataToProcess;
+    } else if (!essay.value && essayDataToProcess) {
+        essay.value = essayDataToProcess;
+    }
+
+    if (essay.value) {
+        errorMsg.value = null; 
+        is404NotFound.value = false; 
+
+        if (essay.value.status === 'completed' && essay.value.content) {
+           if (!parsedContent.value) {
+                try {
+                    parsedContent.value = await parseMarkdown(essay.value.content);
+                } catch (e) {
+                    console.error("Error parsing markdown content (main fetch):", e);
+                    parsedContent.value = null; 
+                }
+           }
+        } else { 
+            parsedContent.value = null;
+        }
+
+        if (essay.value.status === 'pending' || essay.value.status === 'generating') {
+          if (!pollInterval) startPolling();
+        } else {
+          stopPolling();
+          if (essay.value.id) {
+            await fetchRatings(essay.value.id);
+            if (essay.value.status === 'completed') {
+              await fetchComments(essay.value.id);
+            }
+          }
+        }
+    }
+  } catch (err: any) {
+    console.error('Error fetching essay details (fetchEssayAndRelatedData):', err);
+    stopPolling();
+    const statusCode = err.statusCode || err.response?.status;
+    if (statusCode === 404) {
+      is404NotFound.value = true;
+      potentialTitleFromSlug.value = unslugify(slug.value);
+      errorMsg.value = `The essay "${potentialTitleFromSlug.value}" has not been created yet.`;
+    } else {
+      errorMsg.value = err.data?.statusMessage || err.message || 'Could not load the essay.';
+      is404NotFound.value = false; 
+    }
+    essay.value = null; 
+    parsedContent.value = null;
+    ratingStats.value = null; 
+    comments.value = [];
+  } finally {
+    if (pollInterval) {
+    } else if ((essay.value && (essay.value.status === 'completed' || essay.value.status === 'failed')) || errorMsg.value || is404NotFound.value) {
+      isLoading.value = false;
+    } else if (!essay.value && !isLoading.value && !errorMsg.value && !is404NotFound.value) {
+    }
+  }
+};
 
 const fetchRatings = async (essayId: string) => {
   if (!essayId) return;
@@ -132,20 +283,25 @@ const startPolling = () => {
       const currentEssayData = await $fetch<Essay>(`/api/essays/${slug.value}`)
       pollingErrorMsg.value = null;
 
-      essay.value = currentEssayData;
+      if (JSON.stringify(essay.value) !== JSON.stringify(currentEssayData)) {
+        essay.value = currentEssayData;
+      }
 
       if (currentEssayData.status === 'completed' || currentEssayData.status === 'failed') {
         stopPolling()
         isLoading.value = false
+
         if (currentEssayData.id) {
           await fetchRatings(currentEssayData.id)
           if (currentEssayData.status === 'completed') {
             await fetchComments(currentEssayData.id)
             if (currentEssayData.content) {
               try {
-                parsedContent.value = await parseMarkdown(currentEssayData.content);
+                if (JSON.stringify(parsedContent.value?.body) !== JSON.stringify((await parseMarkdown(currentEssayData.content))?.body)) {
+                    parsedContent.value = await parseMarkdown(currentEssayData.content);
+                }
               } catch (e) {
-                console.error("Error parsing markdown content:", e);
+                console.error("Error parsing markdown content (polling):", e);
                 parsedContent.value = null;
               }
             } else {
@@ -165,6 +321,11 @@ const stopPolling = () => {
   if (pollInterval) {
     clearInterval(pollInterval)
     pollInterval = null
+    if (essay.value && (essay.value.status === 'completed' || essay.value.status === 'failed')) {
+        isLoading.value = false;
+    } else if (errorMsg.value || is404NotFound.value) {
+        isLoading.value = false;
+    }
   }
 }
 
@@ -229,21 +390,74 @@ const refreshCommentsAfterReply = () => {
 }
 
 watch(() => essay.value?.id, (newId, oldId) => {
-  if (newId && newId !== oldId && (essay.value?.status === 'completed' || essay.value?.status === 'failed')) {
-    fetchRatings(newId);
-    if (essay.value?.status === 'completed') {
-        fetchComments(newId);
+  if (newId && newId !== oldId) {
+    if (essay.value?.status === 'completed' || essay.value?.status === 'failed') {
+        fetchRatings(newId);
+        if (essay.value?.status === 'completed') {
+            fetchComments(newId);
+        }
     }
   }
 }, { immediate: false });
 
-useHead(() => ({
-  title: essay.value?.title || (isLoading.value ? 'Loading Essay...' : 'Essay')
-}))
+useHead(() => {
+  let pageTitle = 'Essay';
+  const headConfig: { title: string, meta: Array<any>, link: Array<any> } = { title: pageTitle, meta: [], link: [] };
+
+  const currentEssay = essay.value; 
+  const currentSlug = slug.value; 
+  const siteUrl = 'https://wwpgw.georgestrakhov.com';
+
+  if (isLoading.value && !currentEssay && !is404NotFound.value && !errorMsg.value) {
+    pageTitle = 'Loading Essay...';
+  } else if (is404NotFound.value) {
+    pageTitle = `Essay Not Found: ${potentialTitleFromSlug.value || unslugify(currentSlug)}`;
+    headConfig.meta.push({ name: 'robots', content: 'noindex' }); 
+  } else if (currentEssay?.title) {
+    pageTitle = currentEssay.title;
+    const description = `Read the AI-generated essay titled "${pageTitle}". ${currentEssay.author?.githubHandle ? `Prompted by ${currentEssay.author.githubHandle}.` : ''} An experiment on wwpgw.com.`;
+    
+    headConfig.meta.push({ name: 'description', content: description });
+    headConfig.meta.push({ property: 'og:title', content: pageTitle });
+    headConfig.meta.push({ property: 'og:description', content: description });
+    headConfig.meta.push({ property: 'og:type', content: 'article' });
+    headConfig.meta.push({ property: 'og:url', content: `${siteUrl}/essays/${currentSlug}` });
+    headConfig.meta.push({ property: 'og:image', content: `${siteUrl}/social-image.png` });
+
+    if (currentEssay.author?.githubHandle) {
+      headConfig.meta.push({ property: 'article:author', content: `https://github.com/${currentEssay.author.githubHandle}` });
+    }
+    if (currentEssay.createdAt) {
+      headConfig.meta.push({ property: 'article:published_time', content: new Date(currentEssay.createdAt).toISOString() });
+    }
+    
+    headConfig.meta.push({ name: 'twitter:card', content: 'summary_large_image' });
+    headConfig.meta.push({ name: 'twitter:title', content: pageTitle });
+    headConfig.meta.push({ name: 'twitter:description', content: description });
+    headConfig.meta.push({ name: 'twitter:image', content: `${siteUrl}/social-image.png` });
+    
+  } else if (errorMsg.value && !is404NotFound.value) { 
+    pageTitle = 'Error Loading Essay';
+    headConfig.meta.push({ name: 'robots', content: 'noindex' });
+  } else if (currentSlug && !currentEssay && !isLoading.value && !errorMsg.value && !is404NotFound.value) { 
+    pageTitle = `Essay: ${unslugify(currentSlug)}`;
+  }
+
+  headConfig.title = pageTitle;
+  headConfig.link.push({ rel: 'canonical', href: `${siteUrl}/essays/${currentSlug}` });
+
+  return headConfig;
+});
 
 onMounted(async () => {
-  await fetchEssayAndRelatedData()
-})
+  await fetchEssayAndRelatedData();
+  
+  if (!essay.value && !isLoading.value && !errorMsg.value && !is404NotFound.value && initialEssayData.value === null && !initialErrorData.value) {
+      is404NotFound.value = true;
+      potentialTitleFromSlug.value = unslugify(slug.value);
+      errorMsg.value = `The essay "${potentialTitleFromSlug.value}" could not be found or loaded.`;
+  }
+});
 
 onUnmounted(() => {
   stopPolling()
@@ -257,7 +471,7 @@ const formatDate = (dateString?: string | number | Date) => {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: true // Optional: use 12-hour clock with AM/PM
+    hour12: true
   })
 }
 
@@ -375,7 +589,6 @@ const averageRatingDisplay = computed(() => {
         <p class="text-xl text-gray-500 dark:text-gray-400">Essay marked as completed, but content is missing.</p>
       </div>
 
-      <!-- Star Rating Section -->
       <h2 v-if="essay.status === 'completed' && isLoggedIn" class="mt-8 text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Rate this Essay</h2>
       <section v-if="essay.status === 'completed' && isLoggedIn" class="mt-8 p-6 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-800/50">
         
